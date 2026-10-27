@@ -208,13 +208,15 @@ def main():
         key=lambda x: -x[0],
     )
 
-    print(f"{icon} {swap:.1f} GB")
+    disk = shutil.disk_usage("/").free / 1024 ** 3
+    if disk < DISK_CRIT_GB:
+        icon = "🔴"
+    elif disk < DISK_WARN_GB and icon == "🟢":
+        icon = "🟡"
+    print(f"{icon} {swap:.1f} GB · 💾 {disk:.0f}")
     print("---")
     free_txt = f" · frei {free} %" if free is not None else ""
     print(f"Swap {swap:.1f} GB (warn {WARN_GB}, kritisch {CRIT_GB}){free_txt}")
-    disk = shutil.disk_usage("/").free / 1024 ** 3
-    dcol = " | color=red" if disk < DISK_CRIT_GB else " | color=orange" if disk < DISK_WARN_GB else ""
-    print(f"Platte frei {disk:.1f} GB (warn < {DISK_WARN_GB}, kritisch < {DISK_CRIT_GB}){dcol}")
     print("---")
     for mb, name in totals:
         if mb < 50:
@@ -239,6 +241,12 @@ def main():
     else:
         print("Keine verwaisten Dev-Prozesse")
     print("Aktualisieren | refresh=true")
+    # Platten-Abschnitt im selben Eintrag: zwei SwiftBar-Einträge blendet macOS bei Platzmangel aus.
+    disk_script = os.path.join(os.path.dirname(SELF), "memwatch-disk.30m.py")
+    if os.path.exists(disk_script):
+        out = subprocess.run([sys.executable, disk_script], capture_output=True, text=True, timeout=10).stdout
+        print("---")
+        print("\n".join(out.splitlines()[2:]))  # Titelzeile und erstes "---" weglassen
 
 
 if len(sys.argv) >= 2 and sys.argv[1] == "kill" and len(sys.argv) == 3 and sys.argv[2].isdigit():

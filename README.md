@@ -38,10 +38,13 @@ Verwaiste Dev-Prozesse (3)  ▸    ← orphaned dev processes, click to kill
 
 ## Disk usage (`memwatch-disk.30m.py`)
 
-A second, read-only plugin that answers "where did my disk go?". It never deletes anything.
+A read-only part that answers "where did my disk go?". It never deletes anything. It is a separate
+script, but `memwatch.30s.py` runs it and appends its section to its own dropdown, so there is only
+**one** menu-bar item (macOS hides a second item when the bar is full). Do not link it into the plugin
+folder on its own.
 
-- **Menu bar**: `💾` plus free GB on `/` (orange below 20 GB, red below 10 GB). The memory plugin's
-  dropdown also shows a "Platte frei" line with the same colours.
+- **Menu bar**: the title shows `💾` plus free GB on `/` next to the swap figure; the icon turns yellow
+  below 20 GB free and red below 10 GB.
 - **Git worktrees**: repos are discovered generically. Every direct subfolder of each entry in `ROOTS`
   (default: the home directory) that has a `.git` entry is asked for `git worktree list --porcelain`,
   and the results are de-duplicated. Per worktree: total size, `node_modules` size (root plus
@@ -94,7 +97,6 @@ Requires macOS and the system `/usr/bin/python3` (3.9+).
 brew install --cask swiftbar            # choose a plugin folder on first start
 git clone https://github.com/Movm/memwatch.git
 ln -s "$PWD/memwatch/memwatch.30s.py" "<your SwiftBar plugin folder>/memwatch.30s.py"
-ln -s "$PWD/memwatch/memwatch-disk.30m.py" "<your SwiftBar plugin folder>/memwatch-disk.30m.py"  # optional
 ```
 
 Optional, start SwiftBar at login:
