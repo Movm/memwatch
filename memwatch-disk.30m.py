@@ -246,7 +246,7 @@ def main():
         print("---")
         print(f"Git-Worktrees ({len(wts)}) · {fmt(total)}")
         print(f"--Sauber und gepusht (entfernbar): {len(rem)} · {fmt(sum(w['size_kb'] for w in rem))}")
-        print("--Größen per du; Hardlinks (pnpm) können zwischen Worktrees mehrfach zählen | size=11")
+        print("--Größen per du = Obergrenze; Löschen gibt oft weniger frei (Hardlinks/APFS-Klone) – maßgeblich ist „Frei“ | size=11")
         print("-----")
         for w in wts[:TOP_WORKTREES]:
             name = os.path.basename(w["path"])

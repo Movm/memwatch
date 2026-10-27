@@ -69,13 +69,20 @@ berechnen" entry.
 Git is always called as `git -C <path> --no-optional-locks ...` and only with `worktree list`,
 `status`, and `log`. Sizes come from `du -skP`, which does not follow symlinks.
 
-### Caveat: `du` and hardlinks
+### Caveat: sizes are logical, not what deleting frees
 
-Sizes are what `du` reports for the physical directory. `du` counts a hardlinked file once per call,
-so if your package manager hardlinks `node_modules` from a shared store (pnpm's default), per-worktree
-numbers overlap and their sum can exceed the real disk usage; deleting one worktree frees less than
-shown. With hoisted/copied installs the numbers are real. Check with `stat -f '%l'` on a file in
-`node_modules`: a link count above 1 means hardlinks.
+Sizes are what `du` reports for the physical directory. They are an **upper bound** for what removing
+a worktree frees:
+
+- `du` counts a hardlinked file once per call, so with hardlinked installs (pnpm's default store
+  linking) per-worktree numbers overlap. Check with `stat -f '%l'` on a file in `node_modules`: a link
+  count above 1 means hardlinks.
+- On APFS, copy-on-write clones share blocks and `du` still reports their full logical size. This is
+  the likely reason that removing about 51 GB of listed worktrees freed only about 12 GB in one real
+  run (not verified which mechanism applies; the link count there was 1).
+
+Treat the sum as "up to", and judge the real effect by the free-space figure from `df`, which the
+plugin also shows.
 
 ## Killing is explicit and guarded
 
