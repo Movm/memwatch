@@ -1,7 +1,7 @@
 # memwatch
 
 A macOS menu-bar monitor that tells you **when your Mac is running out of memory and what is eating it**.
-One Python file (stdlib only), runs as a [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin.
+Two Python files (stdlib only), run as [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin.
 
 Built for developer machines with limited RAM that run many things at once: dev servers, test runners,
 several AI coding sessions, browsers. On those, the failure mode is slow creep: swap fills up, everything
@@ -36,6 +36,44 @@ Verwaiste Dev-Prozesse (3)  ▸    ← orphaned dev processes, click to kill
   `turbo` or `python -m http.server` whose parent is gone (`ppid 1`) and that have run for over an hour.
   These are the leftovers of closed terminals and crashed agents.
 
+## Disk usage (`memwatch-disk.30m.py`)
+
+A second, read-only plugin that answers "where did my disk go?". It never deletes anything.
+
+- **Menu bar**: `💾` plus free GB on `/` (orange below 20 GB, red below 10 GB). The memory plugin's
+  dropdown also shows a "Platte frei" line with the same colours.
+- **Git worktrees**: repos are discovered generically. Every direct subfolder of each entry in `ROOTS`
+  (default: the home directory) that has a `.git` entry is asked for `git worktree list --porcelain`,
+  and the results are de-duplicated. Per worktree: total size, `node_modules` size (root plus
+  `apps/*`, `packages/*`, `services/*`), branch, age of the last commit, dirty (`git status --porcelain`
+  non-empty) and unpushed (`git log @{u}..` non-empty, or no upstream). A worktree that is clean **and**
+  fully pushed is marked `✓` as "removable". It is only a hint. Biggest first, top 15, with totals.
+- **Big caches**: npm, pnpm, `~/Library/Caches`, `~/.cache`, Xcode DerivedData / DeviceSupport,
+  CoreSimulator and Colima, when they exist. Nested paths are not counted twice.
+
+### Never blocks SwiftBar
+
+Walking dozens of `node_modules` trees takes minutes, far beyond what SwiftBar tolerates. The plugin
+therefore only reads `~/Library/Caches/memwatch-disk.json` and prints it (well under 0.1 s). If the
+cache is missing or older than `TTL_SECONDS` (30 min) and no refresh is running, it spawns a detached
+`nice -n 19` background refresh (`--refresh`). A lock file prevents overlapping runs (stale after 1 h),
+and the cache is written atomically (temp file plus rename). While data is missing the menu says
+"Wird berechnet…"; otherwise it shows the age of the data. The menu also has a manual "Jetzt neu
+berechnen" entry.
+
+### Read-only and safe
+
+Git is always called as `git -C <path> --no-optional-locks ...` and only with `worktree list`,
+`status`, and `log`. Sizes come from `du -skP`, which does not follow symlinks.
+
+### Caveat: `du` and hardlinks
+
+Sizes are what `du` reports for the physical directory. `du` counts a hardlinked file once per call,
+so if your package manager hardlinks `node_modules` from a shared store (pnpm's default), per-worktree
+numbers overlap and their sum can exceed the real disk usage; deleting one worktree frees less than
+shown. With hoisted/copied installs the numbers are real. Check with `stat -f '%l'` on a file in
+`node_modules`: a link count above 1 means hardlinks.
+
 ## Killing is explicit and guarded
 
 Nothing is ever killed automatically. Clicking *Beenden* (or *Alle verwaisten beenden*) runs
@@ -56,6 +94,7 @@ Requires macOS and the system `/usr/bin/python3` (3.9+).
 brew install --cask swiftbar            # choose a plugin folder on first start
 git clone https://github.com/Movm/memwatch.git
 ln -s "$PWD/memwatch/memwatch.30s.py" "<your SwiftBar plugin folder>/memwatch.30s.py"
+ln -s "$PWD/memwatch/memwatch-disk.30m.py" "<your SwiftBar plugin folder>/memwatch-disk.30m.py"  # optional
 ```
 
 Optional, start SwiftBar at login:
@@ -78,6 +117,17 @@ Edit the constants at the top of `memwatch.30s.py`:
 | `ORPHAN_MIN_SECONDS` | 3600 | minimum age of an orphan |
 | `RENOTIFY_SECONDS` | 1800 | notification repeat interval |
 | `DEV`, `GROUPS` | – | regexes for orphan detection and memory groups |
+| `DISK_WARN_GB` / `DISK_CRIT_GB` | 20 / 10 | free-disk colour thresholds (memory plugin) |
+
+`memwatch-disk.30m.py`:
+
+| Constant | Default | Meaning |
+|---|---|---|
+| `ROOTS` | `["~"]` | folders whose direct subfolders are scanned for repos |
+| `WARN_FREE_GB` / `CRIT_FREE_GB` | 20 / 10 | free-disk colour thresholds |
+| `TTL_SECONDS` | 1800 | max cache age before a background refresh starts |
+| `TOP_WORKTREES` | 15 | worktrees listed in the menu |
+| `CACHES` | see file | list of `(label, path)` caches to measure |
 
 ## Limitations
 
@@ -92,7 +142,7 @@ Edit the constants at the top of `memwatch.30s.py`:
 ## Uninstall
 
 Remove the symlink from the plugin folder, delete the login item in System Settings → General → Login
-Items, and `rm ~/Library/Caches/memwatch.state`.
+Items, and `rm ~/Library/Caches/memwatch.state ~/Library/Caches/memwatch-disk.json`.
 
 ## License
 

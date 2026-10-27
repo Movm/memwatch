@@ -9,6 +9,7 @@ Aufruf mit Argument (Kill-Modus, aus dem Menü): `kill <pid>` oder `killall`.
 """
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -18,6 +19,8 @@ from collections import defaultdict
 WARN_GB = 6
 CRIT_GB = 10
 CPU_MIN = 50
+DISK_WARN_GB = 20
+DISK_CRIT_GB = 10
 SELF = os.path.realpath(__file__)
 ORPHAN_MIN_SECONDS = 3600
 RENOTIFY_SECONDS = 1800
@@ -209,6 +212,9 @@ def main():
     print("---")
     free_txt = f" · frei {free} %" if free is not None else ""
     print(f"Swap {swap:.1f} GB (warn {WARN_GB}, kritisch {CRIT_GB}){free_txt}")
+    disk = shutil.disk_usage("/").free / 1024 ** 3
+    dcol = " | color=red" if disk < DISK_CRIT_GB else " | color=orange" if disk < DISK_WARN_GB else ""
+    print(f"Platte frei {disk:.1f} GB (warn < {DISK_WARN_GB}, kritisch < {DISK_CRIT_GB}){dcol}")
     print("---")
     for mb, name in totals:
         if mb < 50:
