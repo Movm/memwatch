@@ -1,18 +1,99 @@
 # memwatch
 
-SwiftBar menu-bar plugin (single Python 3 file, stdlib only) that watches memory pressure on macOS.
+A macOS menu-bar monitor that tells you **when your Mac is running out of memory and what is eating it**.
+One Python file (stdlib only), runs as a [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin.
 
-- Shows swap usage in the menu bar (green < 6 GB, yellow >= 6 GB, red >= 10 GB) and sends a notification on yellow/red (re-notify every 30 min).
-- Dropdown: memory per group (Claude, MCP, Chrome, VS Code, Dev, Docker, apps). Sizes come from `top` MEM (includes compressed memory); falls back to RSS.
-- "CPU-Fresser": processes above 50 % instantaneous CPU (second `top` sample; kernel_task excluded).
-- "Verwaiste Dev-Prozesse": node/npm/pnpm/vite/... with ppid 1 and running >= 1 h. "Beenden" kills the whole process tree (TERM, 2 s, then KILL) after re-checking the PID is still an orphan; "Alle verwaisten beenden" does this for all.
+Built for developer machines with limited RAM that run many things at once: dev servers, test runners,
+several AI coding sessions, browsers. On those, the failure mode is slow creep: swap fills up, everything
+lags, and the cause is a pile of forgotten processes.
+
+```
+🔴 11.6 GB                       ← menu bar: swap in use (🟢 < 6 GB, 🟡 ≥ 6 GB, 🔴 ≥ 10 GB)
+─────────────────────────────
+Swap 11.6 GB (warn 6, kritisch 10) · frei 60 %
+macOS-System: 2436 MB       ▸    ← per group, top 5 processes in the submenu
+VS Code: 1671 MB            ▸
+Chrome: 1553 MB             ▸
+Dev (node/npm/vite): 238 MB ▸
+─────────────────────────────
+CPU-Fresser (1)                  ← processes above 50 % CPU right now
+Verwaiste Dev-Prozesse (3)  ▸    ← orphaned dev processes, click to kill
+   Alle verwaisten beenden
+```
+
+(The menu text is German.)
+
+## What it does
+
+- **Swap in the menu bar**, colour-coded, plus a macOS notification when it crosses a threshold
+  (at most once every 30 min per level).
+- **Memory by group**: Claude sessions, MCP servers, Chrome, VS Code, dev tooling, Docker/Colima, then every
+  other app by name. Sizes come from `top`'s MEM column, which includes compressed memory, so processes
+  that are partly swapped out are not under-reported (falls back to RSS).
+- **CPU hogs**: anything above 50 % *instantaneous* CPU (second `top` sample, not the lifetime average
+  that `ps` reports). This catches runaway test workers that look idle in a memory view.
+- **Orphaned dev processes**: `node`, `npm`, `pnpm`, `vite`, `vitest`, `tsx`, `esbuild`, `tsc`, `eslint`,
+  `turbo` or `python -m http.server` whose parent is gone (`ppid 1`) and that have run for over an hour.
+  These are the leftovers of closed terminals and crashed agents.
+
+## Killing is explicit and guarded
+
+Nothing is ever killed automatically. Clicking *Beenden* (or *Alle verwaisten beenden*) runs
+`memwatch.30s.py kill <pid>` / `killall`, which:
+
+1. re-checks that the PID **still** has `ppid 1` and still matches the dev-process pattern
+   (protects against PID reuse), and refuses otherwise;
+2. sends `TERM` to the whole process **tree**, waits 2 s, then `KILL`s survivors.
+
+Killing only the wrapper (`npm`, `pnpm`) is not enough: they ignore `TERM` and leave their children
+running, which is why the tree is handled.
 
 ## Install
 
+Requires macOS and the system `/usr/bin/python3` (3.9+).
+
 ```sh
-brew install --cask swiftbar          # set the plugin directory on first start
-ln -s "$PWD/memwatch.30s.py" "$HOME/Library/Application Support/SwiftBar/Plugins/memwatch.30s.py"
+brew install --cask swiftbar            # choose a plugin folder on first start
+git clone https://github.com/Movm/memwatch.git
+ln -s "$PWD/memwatch/memwatch.30s.py" "<your SwiftBar plugin folder>/memwatch.30s.py"
+```
+
+Optional, start SwiftBar at login:
+
+```sh
 osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/SwiftBar.app", hidden:false}'
 ```
 
-Thresholds are constants at the top of `memwatch.30s.py`. Kill mode: `memwatch.30s.py kill <pid>` / `killall`.
+The `30s` in the file name is SwiftBar's refresh interval. One run takes about 1.5 s, dominated by the
+two `top` samples.
+
+## Configure
+
+Edit the constants at the top of `memwatch.30s.py`:
+
+| Constant | Default | Meaning |
+|---|---|---|
+| `WARN_GB` / `CRIT_GB` | 6 / 10 | swap thresholds for 🟡 / 🔴 |
+| `CPU_MIN` | 50 | % CPU for the CPU-hog list |
+| `ORPHAN_MIN_SECONDS` | 3600 | minimum age of an orphan |
+| `RENOTIFY_SECONDS` | 1800 | notification repeat interval |
+| `DEV`, `GROUPS` | – | regexes for orphan detection and memory groups |
+
+## Limitations
+
+- **Orphan detection is a heuristic.** A dev server you deliberately started with `nohup` or via
+  `launchd` also has `ppid 1` and will be listed. It is only killed if you click it.
+- The memory groups and the notification texts are tuned for one setup and are German; change the
+  regexes in `GROUPS` for yours.
+- No Linux/Windows support: it relies on macOS `top`, `sysctl vm.swapusage`, `memory_pressure` and
+  `osascript`.
+- Swap thresholds are absolute GB, not relative to installed RAM.
+
+## Uninstall
+
+Remove the symlink from the plugin folder, delete the login item in System Settings → General → Login
+Items, and `rm ~/Library/Caches/memwatch.state`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
